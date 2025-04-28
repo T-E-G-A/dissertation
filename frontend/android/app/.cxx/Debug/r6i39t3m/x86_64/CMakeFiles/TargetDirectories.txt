@@ -1,0 +1,2 @@
+C:/Users/SoftClansUser/Documents/Assignment/PHP-NODE/oviasogie_school_mis/frontend/oviasogie_school_mis/android/app/.cxx/Debug/r6i39t3m/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/SoftClansUser/Documents/Assignment/PHP-NODE/oviasogie_school_mis/frontend/oviasogie_school_mis/android/app/.cxx/Debug/r6i39t3m/x86_64/CMakeFiles/rebuild_cache.dir

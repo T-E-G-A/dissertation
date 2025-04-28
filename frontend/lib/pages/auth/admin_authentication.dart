@@ -1,0 +1,284 @@
+import 'dart:async' show TimeoutException;
+import 'dart:convert';
+import 'dart:developer';
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../api/api_utils.dart';
+import '../../components/widgets/alert_dialog.dart';
+
+import 'package:http/http.dart' as http;
+
+class AdminLoginDialog extends StatefulWidget {
+  const AdminLoginDialog({super.key});
+
+  @override
+  State<AdminLoginDialog> createState() => _AdminLoginDialogState();
+}
+
+class _AdminLoginDialogState extends State<AdminLoginDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _isPasswordVisible = false;
+  ValueNotifier<Map<String, String>> serverMessageNotifier = ValueNotifier({});
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.text = 'password';
+    _usernameController.text = 'tanner72';
+  }
+
+  void _login() async {
+    if (!_formKey.currentState!.validate()) {
+      return; // Do not proceed if the form is invalid
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // fetch login information from server using post request with timeout
+      final response = await http.post(
+        Uri.parse("${ApiUtils.baseUrl}/admin/login"),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({
+          "username": _usernameController.text,
+          "password": _passwordController.text,
+        }),
+      ).timeout(const Duration(seconds: 15), onTimeout: () {
+        throw TimeoutException('The connection has timed out, Please try again!');
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == 'success') {
+          serverMessageNotifier.value = {
+            'status': 'success',
+            'message': 'Login successful!'
+          };
+          
+          MyAlertDialog.showSnackbar(context, "Admin Login successful");
+          log(data.toString());
+          // Save the token and admission number to shared preferences
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString("email", data['email']);
+          await prefs.setString("token", "admin;${data['token']}");
+          await prefs.setString("staffNumber", data['staffNumber']);
+          await prefs.setString("username", data['username']);
+          
+          // Navigate to Dashboard
+          if (mounted) {
+            Navigator.of(context).pop(); // Close the dialog
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              GoRouter.of(context).go('/admin-dashboard', extra: true);
+            });
+          }
+        } else {
+          serverMessageNotifier.value = {
+            'status': 'error',
+            'message': data['message'] ?? 'Invalid credentials'
+          };
+          MyAlertDialog.showSnackbar(context, "Invalid credentials",
+              isSuccess: false);
+          log(data.toString());
+        }
+      } else {
+        serverMessageNotifier.value = Map<String, String>.from(jsonDecode(response.body));
+        MyAlertDialog.showSnackbar(context, "An error occurred",
+            isSuccess: false);
+        log(response.body);
+      }
+    } on TimeoutException catch (e) {
+      serverMessageNotifier.value = {
+        'status': 'error',
+        'message': e.toString()
+      };
+      if (mounted) {
+        MyAlertDialog.showSnackbar(
+          context, 
+          "Request timed out. Please try again.",
+          isSuccess: false
+        );
+      }
+    } catch (e) {
+      serverMessageNotifier.value = {
+        'status': 'error',
+        'message': 'An error occurred: ${e.toString()}'
+      };
+      if (mounted) {
+        MyAlertDialog.showSnackbar(
+          context, 
+          "An error occurred",
+          isSuccess: false
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: const Text(
+        "Admin Login",
+        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      ),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Server message display
+              ValueListenableBuilder<Map<String, String>>(
+                valueListenable: serverMessageNotifier,
+                builder: (context, serverMessage, child) {
+                  return serverMessage.isNotEmpty
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 15),
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            color: serverMessage['status'] == "error"
+                                ? Colors.red[100]
+                                : Colors.green[100],
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 5,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                serverMessage['status'] == "error"
+                                    ? Icons.error_outline
+                                    : Icons.check_circle_outline,
+                                color: serverMessage['status'] == "error"
+                                    ? Colors.red
+                                    : Colors.green,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: SelectableText(
+                                  serverMessage['message']!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink();
+                }),
+              TextFormField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: "Username",
+                  prefixIcon: const Icon(Icons.person),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Please enter your username";
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                decoration: InputDecoration(
+                  labelText: "Password",
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Please enter your password";
+                  }
+                  if (value.length < 6) {
+                    return "Password must be at least 6 characters";
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              _isLoading
+                  ? const CircularProgressIndicator()
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(); // Close the dialog
+                          },
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: _login,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 24,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text(
+                            "Login",
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

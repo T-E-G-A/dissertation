@@ -1,0 +1,1 @@
+C:\Users\SoftClansUser\Documents\Assignment\PHP-NODE\oviasogie_school_mis\frontend\oviasogie_school_mis\build\app\intermediates\cxx\RelWithDebInfo\6l5bd426\obj\arm64-v8a
